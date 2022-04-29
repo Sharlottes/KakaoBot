@@ -12,8 +12,8 @@
 * 이 스크립트는 Rhino Javascript를 기반으로 구성되었기에 일부 ES6 문법을 사용할 수 없으며, 대신 일부 자바 패키지를 사용할 수 있습니다.
 * 이 스크립트는 `secret.json`이라는 특정 JSON파일과 `kaling.js`, `crypto.js` 스크립트가 선택적으로 요구됩니다.
 
-### 카카오톡 링크
-카카오톡 링크 관련 기능을 사용하기 위해선 `sdcard/ChatBot/database/secret.json`과 특정 모듈이 필요합니다. 
+### 카카오링크
+카카오링크 관련 기능을 사용하기 위해선 `sdcard/ChatBot/database/secret.json`과 특정 모듈이 필요합니다. 
 
 #### Secret.json
 secret.json 파일은 카카오톡링크 정보 등 개인정보를 담은 파일입니다.
