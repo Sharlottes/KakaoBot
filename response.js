@@ -18,8 +18,8 @@ const globalPrefix = '!';
 //특수문자 제거 표현식
 const reg = /[\"\[\{\}\[\]\/?\.\,\;\:\|\)\*\~\`\!\^\-\_\+\<\>\@\#\$\%\&\\\=\(\'\"\:\]]/g;
 //Eval 권한
-const perm = [''];
-const { CLOUDINARY_CLIENT_ID, NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, NAVER_KEY, GOOGLE_KEY, MATTERS_KEY, SEARCH_ID, GITHUB_KEY } = secret;
+const perms = [];
+const { CLOUDINARY_CLIENT_ID, NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, NAVER_KEY, GOOGLE_KEY, MATTERS_KEY, SEARCH_ID, GITHUB_KEY } = secret.api;
 
 //Utils
 String.prototype.trip = function(step) {
@@ -36,7 +36,6 @@ function init() {
   manager.commands = [
     new BaseCommand("ping", msg=>msg.reply("ping!")),
     new BaseCommand(["help","도움말"], help).addPrefix("%"),
-    new BaseCommand(["do", "eval"], executeEval).addPrefix(""),
     new BaseCommand("방정보", roomInfo),
     new BaseCommand("재난", disaster, new Option("지역").setOptional()),
     new BaseCommand(["가르치기", "sd"], teach, [new Option("키"), new Option("값")], "::"),
@@ -404,20 +403,6 @@ case 'id': {
   }
 }
 
-const executeEval = function (msg) {  
-  const userhash = java.lang.String(msg.author.avatar.getBase64()).hashCode();
-  if(perm.includes(""+userhash)){
-    try {
-      const result = eval(msg.content.split(/\s/).slice(1).join(" "));
-      if(!String(result)) msg.reply("[eval] 결과값이 \"\"입니다.");
-      else msg.reply(result);
-    } catch(e) {
-      msg.reply(e);
-    }
-  }
-  else msg.reply("권한 미달: "+userhash);
-}
-
 const corona = function (msg) {
   const vaccinate = [];
   const vac = request({
@@ -472,11 +457,11 @@ const onMessage = function (msg) {
   }
   else if(cont.startsWith("몰?루")) {
     const molu = [
-      ["모?루", `https://res.cloudimary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637820695/1637601279492_cugxuz.jpg`],
-      ["쇼핑몰?루", `https://res.cloudimary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874000/1637873933719_fxvncd.jpg`],
-      ["뿅!", `https://res.cloudimary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874683/images_1_qzx3hm.jpg`],
-      ["몰?루없음", `https://res.cloudimary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874661/images_bntlm7.jpg`],
-      ["모모?코", `https://res.cloudimary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874697/i14615767089_r4plwp.png`]
+      ["모?루", `https://res.cloudinary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637820695/1637601279492_cugxuz.jpg`],
+      ["쇼핑몰?루", `https://res.cloudinary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874000/1637873933719_fxvncd.jpg`],
+      ["뿅!", `https://res.cloudinary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874683/images_1_qzx3hm.jpg`],
+      ["몰?루없음", `https://res.cloudinary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874661/images_bntlm7.jpg`],
+      ["모모?코", `https://res.cloudinary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874697/i14615767089_r4plwp.png`]
     ];
     const rand = (Math.random()*4).toFixed();
     
@@ -484,7 +469,7 @@ const onMessage = function (msg) {
       link_ver: '4.0',
       template_id: 65868,
       template_args: {
-        "IMG1": `https://res.CLOUDINARY_CLIENT_ID.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637819645/1637601286501_revroy.jpg`,
+        "IMG1": `https://res.cloudinary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637819645/1637601286501_revroy.jpg`,
         "TITLE": "몰?루",
         "CAT1": "몰루???",
         "ITEM": molu[Math.min(4,rand)][0],
@@ -747,6 +732,8 @@ bot.addListener(Event.MESSAGE, msg=>{
     if(chat) msg.reply(chat.value);
   }
 
+  
+
   //사진 클라우드 저장
   if(false&&msg.content == "사진을 보냈습니다.") {
     const imagename = "test"+Date.now();
@@ -769,13 +756,27 @@ function onNotificationPosted(sbn, sm) {
   const msg = sbns.get("android.messages")[0];
   const room = sbns. get("android.subText").slice(0, 6).trim().toLowerCase().replace(reg, "").replace(/\s/g,"")+sbns. get("android.subText").length;
   //대화기록 수집
-const data = {
-    senderID: java.lang.String(msg.get("sender_person").getKey()).hashCode(),
-    sender: msg.get("sender_person").getName(),
-    content: msg.get("text"),
+  const hash = java.lang.String(msg.get("sender_person").getKey()).hashCode();
+  const data = {
+    senderID: hash,
+    sender: msg.get("sender_person").getName().replace(/\u202e/g,""),
+    content: msg.get("text").replace(/\u202e/g,""),
     timeline: msg.get("time")
   };
   const chats = Database.exists("chat-"+room+".json") ? Database.readObject("chat-"+room+".json") : [];
   chats.push(data);
   Database.writeString("chat-"+room+".json", JSON.stringify(chats));
+
+ if(msg.get("text").startsWith("do")){
+    if(perms.includes(hash)){
+      try {
+        const result = eval(msg.get("text").slice(2));
+        if(!String(result)) Api.replyRoom(sbns.get("android.subText"),"[eval] 결과값이 \"\"입니다.");
+        else Api.replyRoom(sbns.get("android.subText"),result);
+      } catch(e) {
+        Api.replyRoom(sbns.get("android.subText"),e);
+      }
+    }
+    else Api.replyRoom(sbns.get("android.subText"), "권한 미달: "+hash);
+  }
 }
