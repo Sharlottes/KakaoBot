@@ -18,8 +18,7 @@ const globalPrefix = '!';
 //특수문자 제거 표현식
 const reg = /[\"\[\{\}\[\]\/?\.\,\;\:\|\)\*\~\`\!\^\-\_\+\<\>\@\#\$\%\&\\\=\(\'\"\:\]]/g;
 //Eval 권한
-const perm = ['-472599725'];
-
+const perm = [''];
 const { CLOUDINARY_CLIENT_ID, NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, NAVER_KEY, GOOGLE_KEY, MATTERS_KEY, SEARCH_ID, GITHUB_KEY } = secret;
 
 //Utils
@@ -311,7 +310,7 @@ const status = function (msg) {
 const chatlog = function (msg, args) {
   const room = msg.room.slice(0, 6).trim().toLowerCase().replace(reg, "").replace(/\s/g,"")+msg.room.length;
   let filterstr = [];
-  let reverse = true, viewDate = false, viewPre = false, sendImg = false;
+  let reverse = true, viewDate = false, viewPre = false, sendImg = false, viewid = false;
   /** @type {Array<(cons: Array<string>)=>void>} */
   const listeners = [];
 
@@ -328,6 +327,10 @@ const chatlog = function (msg, args) {
         filterstr.push(`${value} 이름을 가진 유저가 보낸 메시지`);
         return (chat) => chat.sender.includes(value);
       }
+case 'id': {
+        filterstr.push(`${value} ID인 유저가 보낸 메시지`);
+        return (chat) => chat.senderID == value;
+      }
       case 'msg': {
         if(value[0]=='/' && value[value.length-1]=='/') {
           filterstr.push(`${value}에 적합한 내용을 포함한 메시지`);
@@ -339,7 +342,12 @@ const chatlog = function (msg, args) {
       case 'amount': {
         const val = parseInt(value.replace(/\D/g, ""));
         filterstr.push(`최근 ${val}개의 메시지`);
-        listeners.push(cons=>cons=cons.slice(cons.length-1-val, cons.length-1));
+        listeners.push(cons=>cons.splice(0,cons.length-val));
+        break;
+      }
+      case 'viewid': {
+        filterstr.push("유저ID보기");
+        viewid = true;
         break;
       }
       case 'reverse': {
@@ -365,11 +373,11 @@ const chatlog = function (msg, args) {
     }
   }) : [];
   const chats = Database.readObject("chat-"+room+".json");
-
+   
   /** @type {Array<string>} */
   const contents = chats.map(data=>{
     const date = new Date(data.timeline);
-    if(!filters.length||filters.every(filter=>filter?filter(data):true)) return (viewDate ? `[${date.getMonth()}/${date.getDate()} ${(date.getHours() > 12 ? '오후 ' + (date.getHours()-12) : '오전 ' + date.getHours())}:${date.getMinutes()}:${date.getSeconds()}] ` : "")+`${data.sender}: ${data.content}\n`;
+    if(!filters.length||filters.every(filter=>filter?filter(data):true)) return (viewid?`\n##${data.senderID}##\n`:"")+(viewDate ? `[${date.getMonth()}/${date.getDate()} ${(date.getHours() > 12 ? '오후 ' + (date.getHours()-12) : '오전 ' + date.getHours())}:${date.getMinutes()}:${date.getSeconds()}] ` : "")+`${data.sender}: ${data.content}\n`;
     return "";
   }).filter(e=>e);
   listeners.forEach(listener=>listener(contents));
@@ -414,7 +422,7 @@ const corona = function (msg) {
   const vaccinate = [];
   const vac = request({
     url: "http://ncov.mohw.go.kr/"
-  });
+  }).parse();
   const child = vac.select("div.child_list").select("percent").toArray();
   let i = 0;
   vac.select("div.vaccine_list > div.inner.cl_b_aftr > div.box").forEach(ele => {
@@ -464,11 +472,11 @@ const onMessage = function (msg) {
   }
   else if(cont.startsWith("몰?루")) {
     const molu = [
-      ["모?루", `https://res.CLOUDINARY_CLIENT_ID.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637820695/1637601279492_cugxuz.jpg`],
-      ["쇼핑몰?루", `https://res.CLOUDINARY_CLIENT_ID.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874000/1637873933719_fxvncd.jpg`],
-      ["뿅!", `https://res.CLOUDINARY_CLIENT_ID.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874683/images_1_qzx3hm.jpg`],
-      ["몰?루없음", `https://res.CLOUDINARY_CLIENT_ID.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874661/images_bntlm7.jpg`],
-      ["모모?코", `https://res.CLOUDINARY_CLIENT_ID.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874697/i14615767089_r4plwp.png`]
+      ["모?루", `https://res.cloudimary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637820695/1637601279492_cugxuz.jpg`],
+      ["쇼핑몰?루", `https://res.cloudimary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874000/1637873933719_fxvncd.jpg`],
+      ["뿅!", `https://res.cloudimary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874683/images_1_qzx3hm.jpg`],
+      ["몰?루없음", `https://res.cloudimary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874661/images_bntlm7.jpg`],
+      ["모모?코", `https://res.cloudimary.com/${CLOUDINARY_CLIENT_ID}/image/upload/v1637874697/i14615767089_r4plwp.png`]
     ];
     const rand = (Math.random()*4).toFixed();
     
@@ -739,30 +747,35 @@ bot.addListener(Event.MESSAGE, msg=>{
     if(chat) msg.reply(chat.value);
   }
 
-  const data = {
-    content: msg.content,
-    sender: msg.author.name,
-    timeline: Date.now()
-  };
-
   //사진 클라우드 저장
-  if(msg.content == "사진을 보냈습니다.") {
+  if(false&&msg.content == "사진을 보냈습니다.") {
     const imagename = "test"+Date.now();
     const base64 = 'data:image/png;base64,'+msg.image.getBase64();
-    org.jsoup.Jsoup.connect(`https://api.CLOUDINARY_CLIENT_ID.com/v1_1/${CLOUDINARY_CLIENT_ID}/image/upload`) 
+    org.jsoup.Jsoup.connect(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLIENT_ID}/image/upload`) 
       .data('file', base64) 
       .data('upload_preset','kakaoupload') 
       .data('public_id', imagename) 
       .ignoreContentType(true).ignoreHttpErrors(true).post().text();
-
-    data.image = {
-      id: imagename,
-      code: base64
-    }
   }
+});
 
+
+function onNotificationPosted(sbn, sm) { 
+  let packageName = sbn.getPackageName();
+  if (!packageName.startsWith("com.kakao.tal")) return;
+   Log.info(sbn.getNotification().extras);
+  const sbns = sbn.getNotification().extras;
+   if(!sbns.get("android.subText")||!sbns.get("android.messages")) return;
+  const msg = sbns.get("android.messages")[0];
+  const room = sbns. get("android.subText").slice(0, 6).trim().toLowerCase().replace(reg, "").replace(/\s/g,"")+sbns. get("android.subText").length;
   //대화기록 수집
+const data = {
+    senderID: java.lang.String(msg.get("sender_person").getKey()).hashCode(),
+    sender: msg.get("sender_person").getName(),
+    content: msg.get("text"),
+    timeline: msg.get("time")
+  };
   const chats = Database.exists("chat-"+room+".json") ? Database.readObject("chat-"+room+".json") : [];
   chats.push(data);
   Database.writeString("chat-"+room+".json", JSON.stringify(chats));
-});
+}
