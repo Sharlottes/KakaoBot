@@ -1,11 +1,10 @@
 "use strict";
 
 importPackage(org.jsoup);
-
 const bot = BotManager.getCurrentBot();
 const Kakao = new (require('kaling'))();
 const secret = Database.readObject("./secret.json");
-try{ //전체 명령어의 카링 로그인에 대한 의존성 방지
+try{
   Kakao.init(secret.kakao.key, secret.kakao.domain);
   Kakao.login(secret.kakao.id, secret.kakao.pw);
 } 
@@ -13,12 +12,8 @@ catch(err) {
   Log.w(err);
 };
 
-//기본 명령어 접두사
 const globalPrefix = '!';
-//특수문자 제거 표현식
 const reg = /[\"\[\{\}\[\]\/?\.\,\;\:\|\)\*\~\`\!\^\-\_\+\<\>\@\#\$\%\&\\\=\(\'\"\:\]]/g;
-//Eval 권한
-const perms = [];
 const { CLOUDINARY_CLIENT_ID, NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, NAVER_KEY, GOOGLE_KEY, MATTERS_KEY, SEARCH_ID, GITHUB_KEY } = secret.api;
 
 //Utils
@@ -29,7 +24,6 @@ String.prototype.trip = function(step) {
 Array.prototype.splitIndex = function(index) {
   return [this.slice(0, index), this.slice(index, this.length-1)];
 }
-
 
 //초기화 함수
 function init() {
@@ -127,7 +121,6 @@ Option.prototype.setOptional = function() {
   return this;
 }
 
-
 /**
 기본 명령어 클래스
  * @param {(msg: Message)=>boolean} trigger 기본 명령어 판단자
@@ -202,7 +195,6 @@ BaseCommand.prototype.addPrefix = function(prefix) {
   this.prefix.push(prefix);
   return this;
 }
-
 
 const help = function (msg) {
   msg.reply(manager.commands.map(cmd=>{
@@ -327,8 +319,8 @@ const chatlog = function (msg, args) {
         return (chat) => chat.sender.includes(value);
       }
 case 'id': {
-        filterstr.push(`${value} ID인 유저가 보낸 메시지`);
-        return (chat) => chat.senderID == value;
+        //filterstr.push(`${value} ID인 유저가 보낸 메시지`);
+        //return (chat) => chat.senderID == value;
       }
       case 'msg': {
         if(value[0]=='/' && value[value.length-1]=='/') {
@@ -345,7 +337,7 @@ case 'id': {
         break;
       }
       case 'viewid': {
-        filterstr.push("유저ID보기");
+        //filterstr.push("유저ID보기");
         viewid = true;
         break;
       }
@@ -731,52 +723,38 @@ bot.addListener(Event.MESSAGE, msg=>{
     const chat = JSON.parse(Database.readString("study-"+room+".json"))[msg.content.trim()];
     if(chat) msg.reply(chat.value);
   }
-
-  
-
+  //Log.i(Api.getLastImage());
+  /*
   //사진 클라우드 저장
-  if(false&&msg.content == "사진을 보냈습니다.") {
+  if(msg.content == "사진을 보냈습니다.") {
     const imagename = "test"+Date.now();
-    const base64 = 'data:image/png;base64,'+msg.image.getBase64();
-    org.jsoup.Jsoup.connect(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLIENT_ID}/image/upload`) 
-      .data('file', base64) 
+    const base64 = msg.image.getBase64();
+    if(!base64) return;
+    Jsoup.connect(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLIENT_ID}/image/upload`) 
+      .data('file', 'data:image/png;base64,'+base64) 
       .data('upload_preset','kakaoupload') 
       .data('public_id', imagename) 
       .ignoreContentType(true).ignoreHttpErrors(true).post().text();
   }
+  */
 });
 
-
-function onNotificationPosted(sbn, sm) { 
-  let packageName = sbn.getPackageName();
-  if (!packageName.startsWith("com.kakao.tal")) return;
-   Log.info(sbn.getNotification().extras);
-  const sbns = sbn.getNotification().extras;
-   if(!sbns.get("android.subText")||!sbns.get("android.messages")) return;
-  const msg = sbns.get("android.messages")[0];
-  const room = sbns. get("android.subText").slice(0, 6).trim().toLowerCase().replace(reg, "").replace(/\s/g,"")+sbns. get("android.subText").length;
-  //대화기록 수집
+const onNotificationPosted = function(noti) { 
+  if(!noti.getPackageName().startsWith("com.kakao.talk")) return; 
+  const extra = noti.getNotification().extras;
+  if(!extra.get("android.subText")||!extra.get("android.messages")) return;
+  const msg = extra.get("android.messages")[0];
+  const room = extra.get("android.subText").slice(0, 6).trim().toLowerCase().replace(reg, "").replace(/\s/g,"")+extra.get("android.subText").length;
+ 
+ //대화기록 수집
   const hash = java.lang.String(msg.get("sender_person").getKey()).hashCode();
   const data = {
     senderID: hash,
-    sender: msg.get("sender_person").getName().replace(/\u202e/g,""),
-    content: msg.get("text").replace(/\u202e/g,""),
+    sender: String(msg.get("sender_person").getName()).replace(/\u202e/g,""),
+    content: String(msg.get("text")).replace(/\u202e/g,""),
     timeline: msg.get("time")
   };
   const chats = Database.exists("chat-"+room+".json") ? Database.readObject("chat-"+room+".json") : [];
   chats.push(data);
   Database.writeString("chat-"+room+".json", JSON.stringify(chats));
-
- if(msg.get("text").startsWith("do")){
-    if(perms.includes(hash)){
-      try {
-        const result = eval(msg.get("text").slice(2));
-        if(!String(result)) Api.replyRoom(sbns.get("android.subText"),"[eval] 결과값이 \"\"입니다.");
-        else Api.replyRoom(sbns.get("android.subText"),result);
-      } catch(e) {
-        Api.replyRoom(sbns.get("android.subText"),e);
-      }
-    }
-    else Api.replyRoom(sbns.get("android.subText"), "권한 미달: "+hash);
-  }
 }
