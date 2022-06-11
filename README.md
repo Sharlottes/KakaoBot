@@ -22,22 +22,24 @@
 ### Command
 명령어 클래스. 여러 접두사를 지원합니다.
 
-#### Constructor (trigger: **(msg: Message) => boolean**, listener: **(msg: Message) => void**, prefix: **string[] | string** = **['!']**)
+#### Constructor 
+    (trigger: (msg: Message) => boolean, listener: (msg: Message) => void, prefix: string[] | string = ['!'])
 #### Property
-|    Name   |                Type             |                                   Description                                |
-| :-------: | :-----------------------------: | :--------------------------------------------------------------------------: |
-| trigger   | `(msg: Message) => boolean`     | 명령어 이벤트 리스너 조건.true를 반환하고 `listener`에서 처리할 수도 있습니다.   |
-| listener  | `(msg: Message) => void`        | 명령어 이벤트 리스너.                                                         |
-| prefix    | `string[]`                      | 접두사 목록. 생성자에 단일 요소만 입력할 시 새 배열로 전환합니다.                |
-| id        | `number`                        | 명령어 고유 ID. 딱히 쓰이진 않습니다.                                          |
-| run       | `(msg: Message) => void`        | 인자로 받은 `Message`로 명령어를 실행합니다.                                   |
-| isValid   | `(msg: Message) => boolean`     | 인자로 받은 `Message`로 명령어가 유효한지 검사합니다.                           |
-| addPrefix | `(prefix: string) => Command`   | 인자로 받은 접두사를 추가합니다.                                               |
+|    Name   |                Type             |                                   Description                  |
+| :-------: | :-----------------------------: | :------------------------------------------------------------: |
+| trigger   | `(msg: Message) => boolean`     | 명령어 이벤트 리스너 조건.                                      |
+| listener  | `(msg: Message) => void`        | 명령어 이벤트 리스너.                                           |
+| prefix    | `string[]`                      | 접두사 목록. 생성자에 단일 요소만 입력할 시 새 배열로 전환합니다. |
+| id        | `number`                        | 명령어 고유 ID. 딱히 쓰이진 않습니다.                           |
+| run       | `(msg: Message) => void`        | 인자로 받은 `Message`로 명령어를 실행합니다.                    |
+| isValid   | `(msg: Message) => boolean`     | 인자로 받은 `Message`로 명령어가 유효한지 검사합니다.            |
+| addPrefix | `(prefix: string) => Command`   | 인자로 받은 접두사를 추가합니다.                                |
 
 ### BaseCommand
 명령어 이름과 인자가 추가된 기본 명령어 클래스. 여러 이름과 인자를 지원합니다.
 
-#### Constructor (names: **string[] | string**, listener: **(msg: Message) => void**, options: **Option[] | Option**, saperator: **RegExp | string** = **/\s/**)
+#### Constructor 
+    (names: string[] | string, listener: (msg: Message) => void, options: Option[] | Option, saperator: RegExp | string = /\s/)
 #### Property
 |    Name   |    Type    |           Description             |
 | :-------: | :--------: | :-------------------------------: |
@@ -48,7 +50,8 @@
 ### Option
 `BaseCommand`의 명령어 인자 타입
 
-#### Constructor (name: **string**, type: **'string'|'int'|'float'** = **'string'**)
+#### Constructor 
+    (name: string, type: 'string'|'int'|'float' = 'string')
 #### Property
 |    Name     |            Type            |                          Description                       |
 | :---------: | :------------------------: | :--------------------------------------------------------: |
