@@ -42,7 +42,7 @@ importPackage(org.jsoup);
 const bot = BotManager.getCurrentBot();
 const secret = Database.readObject("./secret.json");
 const Kakao = new (require('kaling'))();
-const manager = new CommandManager();
+const commands = [];
 const globalPrefix = '!';
 
 /**
@@ -66,6 +66,183 @@ const {
   GITHUB_KEY
 } = secret.api;
 
+///Utils Resion
+String.prototype.trip = function (step) {
+  step = step || 1;
+  return this.slice(step, this.length - step);
+}
+Array.prototype.splitIndex = function (index) {
+  return [this.slice(0, index), this.slice(index, this.length - 1)];
+}
+
+/**
+카카오링크의 리스트 템플릿을 제공된 인자와 함께 수신합니다.
+ * @param {string} room 수신할 방 이름
+ * @param {ListParameter} body 수신 인자
+*/
+const send = function (room, body) {
+  const args = {};
+
+  if (body.url) args.URL = body.url;
+  if (body.title) args.TITLE = body.title;
+  if (body.list) for (let i = 0; i < body.list.length; i++) {
+    args["LIST" + (i + 1)] = body.list[i][0];
+    args["DESC" + (i + 1)] = body.list[i][1];
+  }
+  if (body.image) args.IMG = body.image;
+  if (body.item) args.ITEM = body.item;
+  if (body.cat) args.CAT1 = body.cat;
+  if (body.itemImg) args.ITEMIMG = body.cat;
+
+  Kakao.send(room, {
+    link_ver: '4.0',
+    template_id: 65868,
+    template_args: args
+  }, 'custom');
+}
+
+/**
+ * base64로 인코딩된 이미지를 cloudinary의 kakaoupload에 업로드합니다.
+ * @param {string} imagename 사진 이름
+ * @param {string} base64 인코딩된 사진 base64 문자열  
+ */
+const uploadImage = function (imagename, base64) {
+  Jsoup.connect(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLIENT_ID}/image/upload`)
+    .data({
+      'file': 'data:image/png;base64,' + base64,
+      'upload_preset': 'kakaoupload',
+      'public_id': imagename
+    })
+    .ignoreContentType(true)
+    .ignoreHttpErrors(true)
+    .post();
+}
+
+/**
+ * 제공된 요청 인자를 가지고 http 요청을 합니다.
+ * @param {Connection.Request} data - 요청 인자 
+ * @returns {Connection.Response}
+ */
+const request = function (data) {
+  let con = Jsoup.connect(data.url).ignoreContentType(true).ignoreHttpErrors(true).method(Connection.Method.GET);
+  if (data.requestBody) con = con.requestBody(data.requestBody);
+  if (data.data) con = con.data(data.data);
+  if (data.header) con = con.headers(data.header);
+  if (data.method) con = con.method(Connection.Method.valueOf(data.method));
+  if (data.parser) con = con.parser(data.parser);
+  if (data.proxy) con = con.proxy(data.proxy);
+  if (data.timeout) con = con.timeout(data.timeout);
+  if (data.cookies) con = con.cookies(data.cookies);
+  if (data.userAgent) con = con.userAgent(data.userAgent);
+
+  return con.execute();
+}
+
+/**
+ * 제공된 요청 인자를 가지고 https 요청을 하여 받은 body를 json으로 파싱합니다.
+ * JSON Restful API 사용에 적절합니다.
+ * @param {Connection.Request} data - 요청 인자 
+ * @returns {Element}
+ */
+const requestObj = function (data) {
+  return JSON.parse(new java.lang.String(request(data).bodyAsBytes(), "UTF-8"));
+}
+
+/**
+명령어 옵션 클래스
+* @param {string} name 인자 이름
+* @param {"string"|"int"|"float"} [type="string"] 인자 타입 
+*/
+const Option = function (name, type) {
+  this.name = name;
+  this.type = type || "string";
+  this.optional = false;
+  if (this.type != 'string' && this.type != 'int' && this.type != 'float') throw new Error("옵션 생성자의 type 인자는 string, int, float 중 하나여야만 합니다: " + this.type);
+}
+Option.prototype.typeValid = function (arg) {
+  if (type === "string") return true;
+  if (type === "int") return !arg.replace(/\d/g, "");
+  return !arg.replace(/\d|[\d+\.\d+]/g, "");
+}
+Option.prototype.setOptional = function () {
+  this.optional = true;
+  return this;
+}
+
+/**
+기본 명령어 클래스
+* @param {(msg: Message)=>boolean} trigger 기본 명령어 판단자
+* @param {(msg: Message)=>void} listener 명령어 리스너
+* @param {Array<string>} [prefix=['!']] 임의 접두사
+*/
+const Command = function (trigger, listener, prefix) {
+  this.trigger = trigger;
+  this.listener = listener;
+  this.id = commands.length;
+  this.prefix = prefix ? Array.isArray(prefix) ? prefix : [prefix] : [globalPrefix];
+}
+Command.prototype.run = function (msg) {
+  if (this.isValid(msg)) this.listener(msg);
+}
+Command.prototype.isValid = function (msg) {
+  return this.prefix.some(p => msg.content.startsWith(p)) && this.trigger(msg);
+}
+Command.prototype.addPrefix = function (prefix) {
+  this.prefix.push(prefix);
+  return this;
+}
+
+/**
+더 쉬운 명령어 관리를 위한 기초 명령어 클래스
+* @param {string|Array<string>} names 명령어 이름들
+* @param {(msg: Message)=>void} listener 명령어 리스너
+* @param {Option|Array<Option>} [options] 명령어 인자
+* @param {RegExp|string} [saperator=/\s/] 메시지 구분자
+*/
+const BaseCommand = function (names, listener, options, saperator) {
+  Command.call(this, () => true, listener);
+  this.names = Array.isArray(names) ? names : [names];
+  this.options = options ? Array.isArray(options) ? options : [options] : [];
+  this.saperator = typeof saperator === 'string' ? new RegExp(saperator) : saperator || new RegExp(' ');
+
+  //옵션 유효성 검사
+  let optional = false;
+  for (let opt of this.options) {
+    if (optional && !opt.optional) throw new Error("선택 매개변수는 필수 매개변수보다 앞에 있을 수 없습니다.");
+    optional = opt.optional;
+  }
+}
+BaseCommand.prototype = Object.create(Command.prototype);
+BaseCommand.prototype.isValid = function (msg) {
+  if (Command.prototype.isValid.call(this, msg)) {
+    const spliten = msg.content.split(/\s/);
+    const args = msg.content.includes(this.saperator.toString().trip()) ? spliten.slice(1).join(" ").split(this.saperator) : spliten.slice(1);
+
+    if (this.prefix.some(p => this.names.includes(spliten[0].slice(p.length)))) {
+      if (!this.options.length) return true;
+
+      for (let i = 0; i < this.options.length; i++) {
+        const opt = this.options[i];
+        if (opt.optional || (args[i] && typeof args[i] === opt.type)) return true;
+      }
+
+      //유효하지 않은 서식은 도움말 답변
+      if (this.options.length) msg.reply(this.prefix.join(",") + this.names.join("|") + " " + this.options.map(opt => (opt.optional ? "[" : "(") + opt.name + ":" + opt.type + (opt.optional ? "]" : ")")).join(this.saperator.toString().trip()));
+      else msg.reply(this.prefix.join(",") + this.names.join("|"));
+    }
+  }
+}
+BaseCommand.prototype.run = function (msg) {
+  if (this.isValid(msg)) {
+    const spliten = msg.content.split(/\s/);
+    const args = msg.content.includes(this.saperator.toString().trip()) ? spliten.slice(1).join(" ").split(this.saperator) : spliten.slice(1);
+    this.listener(msg, args);
+  }
+}
+BaseCommand.prototype.addPrefix = function (prefix) {
+  this.prefix.push(prefix);
+  return this;
+}
 
 /**
  * 
@@ -89,15 +266,18 @@ function addKalingListener(name, url) {
  */
 function addCommand(names, listener, options, saperator) {
   const command = new BaseCommand(names, listener, options, saperator);
-  manager.commands.push(command);
+  commands.push(command);
   return command;
 }
 
 /**
  * 초기화 함수
+ * 
  * 경고 - 이 함수는 컴파일이 시작될 때 단 한번만 호출됩니다.
  */
 function init() {
+  const from = Date.now();
+  Log.info("초기화 시작...");
   Kakao.init(secret.kakao.key, secret.kakao.domain);
   Kakao.login(secret.kakao.id, secret.kakao.pw);
 
@@ -124,7 +304,7 @@ function init() {
 
 
   addCommand(["help", "도움말"], msg => {
-    msg.reply(manager.commands.map(cmd => {
+    msg.reply(commands.map(cmd => {
       let str = "• " + cmd.prefix.join(",") + cmd.names.join("|");
       if (cmd.options.length) str += " " + cmd.options.map(opt => (opt.optional ? "[" : "(") + opt.name + ":" + opt.type + (opt.optional ? "]" : ")")).join(cmd.saperator.toString().trip());
       return str;
@@ -586,12 +766,12 @@ function init() {
     }, 'custom');
     else if (typeof obj === "string") msg.reply(obj);
     else msg.reply("Empty object!");
-  }, [new Option("유형"), new Option("검색어"), new Option("옵션")])
+  }, [new Option("유형"), new Option("검색어"), new Option("옵션")]);
+
+  Log.info("초기화 완료: " + (Date.now() - from) + "ms");
 }
 
-bot.addListener(Event.START_COMPILE, () => {
-  init();
-})
+init();
 
 bot.addListener(Event.MESSAGE, msg => {
   const { content, room } = msg;
@@ -602,7 +782,7 @@ bot.addListener(Event.MESSAGE, msg => {
   android.os.StrictMode.enableDefaults();
 
   //명령어 체크
-  manager.commands.forEach(cmd => cmd.run(msg));
+  commands.forEach(cmd => cmd.run(msg));
 
   //단순 리스너 체크
   if (url) send(room, typeof url === 'function' ? url(msg) : url);
@@ -614,7 +794,7 @@ bot.addListener(Event.MESSAGE, msg => {
   }
 });
 
-bot.addListener(Evnet.NOTIFICATION_POSTED, noti => {
+bot.addListener(Event.NOTIFICATION_POSTED, noti => {
   if (!noti.getPackageName().startsWith("com.kakao.talk")) return;
   const extra = noti.getNotification().extras;
   if (!extra.get("android.subText") || !extra.get("android.messages")) return;
@@ -633,192 +813,3 @@ bot.addListener(Evnet.NOTIFICATION_POSTED, noti => {
   chats.push(data);
   Database.writeString("chat-" + room + ".json", JSON.stringify(chats));
 });
-
-
-
-
-
-
-
-///Utils Resion
-String.prototype.trip = function (step) {
-  step = step || 1;
-  return this.slice(step, this.length - step);
-}
-Array.prototype.splitIndex = function (index) {
-  return [this.slice(0, index), this.slice(index, this.length - 1)];
-}
-
-/**
-카카오링크의 리스트 템플릿을 제공된 인자와 함께 수신합니다.
- * @param {string} room 수신할 방 이름
- * @param {ListParameter} body 수신 인자
-*/
-const send = function (room, body) {
-  const args = {};
-
-  if (body.url) args.URL = body.url;
-  if (body.title) args.TITLE = body.title;
-  if (body.list) for (let i = 0; i < body.list.length; i++) {
-    args["LIST" + (i + 1)] = body.list[i][0];
-    args["DESC" + (i + 1)] = body.list[i][1];
-  }
-  if (body.image) args.IMG = body.image;
-  if (body.item) args.ITEM = body.item;
-  if (body.cat) args.CAT1 = body.cat;
-  if (body.itemImg) args.ITEMIMG = body.cat;
-
-  Kakao.send(room, {
-    link_ver: '4.0',
-    template_id: 65868,
-    template_args: args
-  }, 'custom');
-}
-
-/**
- * base64로 인코딩된 이미지를 cloudinary의 kakaoupload에 업로드합니다.
- * @param {string} imagename 사진 이름
- * @param {string} base64 인코딩된 사진 base64 문자열  
- */
-const uploadImage = function (imagename, base64) {
-  Jsoup.connect(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLIENT_ID}/image/upload`)
-    .data({
-      'file': 'data:image/png;base64,' + base64,
-      'upload_preset': 'kakaoupload',
-      'public_id': imagename
-    })
-    .ignoreContentType(true)
-    .ignoreHttpErrors(true)
-    .post();
-}
-
-/**
- * 제공된 요청 인자를 가지고 http 요청을 합니다.
- * @param {Connection.Request} data - 요청 인자 
- * @returns {Connection.Response}
- */
-const request = function (data) {
-  let con = Jsoup.connect(data.url).ignoreContentType(true).ignoreHttpErrors(true).method(Connection.Method.GET);
-  if (data.requestBody) con = con.requestBody(data.requestBody);
-  if (data.data) con = con.data(data.data);
-  if (data.header) con = con.headers(data.header);
-  if (data.method) con = con.method(Connection.Method.valueOf(data.method));
-  if (data.parser) con = con.parser(data.parser);
-  if (data.proxy) con = con.proxy(data.proxy);
-  if (data.timeout) con = con.timeout(data.timeout);
-  if (data.cookies) con = con.cookies(data.cookies);
-  if (data.userAgent) con = con.userAgent(data.userAgent);
-
-  return con.execute();
-}
-
-/**
- * 제공된 요청 인자를 가지고 https 요청을 하여 받은 body를 json으로 파싱합니다.
- * JSON Restful API 사용에 적절합니다.
- * @param {Connection.Request} data - 요청 인자 
- * @returns {Element}
- */
-const requestObj = function (data) {
-  return JSON.parse(new java.lang.String(request(data).bodyAsBytes(), "UTF-8"));
-}
-
-//명령어 관리 클래스
-const CommandManager = function () {
-  this.commands = [];
-}
-
-/**
-명령어 옵션 클래스
-* @param {string} name 인자 이름
-* @param {"string"|"int"|"float"} [type="string"] 인자 타입 
-*/
-const Option = function (name, type) {
-  this.name = name;
-  this.type = type || "string";
-  this.optional = false;
-  if (this.type != 'string' && this.type != 'int' && this.type != 'float') throw new Error("옵션 생성자의 type 인자는 string, int, float 중 하나여야만 합니다: " + this.type);
-}
-Option.prototype.typeValid = function (arg) {
-  if (type === "string") return true;
-  if (type === "int") return !arg.replace(/\d/g, "");
-  return !arg.replace(/\d|[\d+\.\d+]/g, "");
-}
-Option.prototype.setOptional = function () {
-  this.optional = true;
-  return this;
-}
-
-/**
-기본 명령어 클래스
-* @param {(msg: Message)=>boolean} trigger 기본 명령어 판단자
-* @param {(msg: Message)=>void} listener 명령어 리스너
-* @param {Array<string>} [prefix=['!']] 임의 접두사
-*/
-const Command = function (trigger, listener, prefix) {
-  this.trigger = trigger;
-  this.listener = listener;
-  this.id = manager.commands.length;
-  this.prefix = prefix ? Array.isArray(prefix) ? prefix : [prefix] : [globalPrefix];
-}
-Command.prototype.run = function (msg) {
-  if (this.isValid(msg)) this.listener(msg);
-}
-Command.prototype.isValid = function (msg) {
-  return this.prefix.some(p => msg.content.startsWith(p)) && this.trigger(msg);
-}
-Command.prototype.addPrefix = function (prefix) {
-  this.prefix.push(prefix);
-  return this;
-}
-
-/**
-더 쉬운 명령어 관리를 위한 기초 명령어 클래스
-* @param {string|Array<string>} names 명령어 이름들
-* @param {(msg: Message)=>void} listener 명령어 리스너
-* @param {Option|Array<Option>} [options] 명령어 인자
-* @param {RegExp|string} [saperator=/\s/] 메시지 구분자
-*/
-const BaseCommand = function (names, listener, options, saperator) {
-  Command.call(this, () => true, listener);
-  this.names = Array.isArray(names) ? names : [names];
-  this.options = options ? Array.isArray(options) ? options : [options] : [];
-  this.saperator = typeof saperator === 'string' ? new RegExp(saperator) : saperator || new RegExp(' ');
-
-  //옵션 유효성 검사
-  let optional = false;
-  for (let opt of this.options) {
-    if (optional && !opt.optional) throw new Error("선택 매개변수는 필수 매개변수보다 앞에 있을 수 없습니다.");
-    optional = opt.optional;
-  }
-}
-BaseCommand.prototype = Object.create(Command.prototype);
-BaseCommand.prototype.isValid = function (msg) {
-  if (Command.prototype.isValid.call(this, msg)) {
-    const spliten = msg.content.split(/\s/);
-    const args = msg.content.includes(this.saperator.toString().trip()) ? spliten.slice(1).join(" ").split(this.saperator) : spliten.slice(1);
-
-    if (this.prefix.some(p => this.names.includes(spliten[0].slice(p.length)))) {
-      if (!this.options.length) return true;
-
-      for (let i = 0; i < this.options.length; i++) {
-        const opt = this.options[i];
-        if (opt.optional || (args[i] && typeof args[i] === opt.type)) return true;
-      }
-
-      //유효하지 않은 서식은 도움말 답변
-      if (this.options.length) msg.reply(this.prefix.join(",") + this.names.join("|") + " " + this.options.map(opt => (opt.optional ? "[" : "(") + opt.name + ":" + opt.type + (opt.optional ? "]" : ")")).join(this.saperator.toString().trip()));
-      else msg.reply(this.prefix.join(",") + this.names.join("|"));
-    }
-  }
-}
-BaseCommand.prototype.run = function (msg) {
-  if (this.isValid(msg)) {
-    const spliten = msg.content.split(/\s/);
-    const args = msg.content.includes(this.saperator.toString().trip()) ? spliten.slice(1).join(" ").split(this.saperator) : spliten.slice(1);
-    this.listener(msg, args);
-  }
-}
-BaseCommand.prototype.addPrefix = function (prefix) {
-  this.prefix.push(prefix);
-  return this;
-}
